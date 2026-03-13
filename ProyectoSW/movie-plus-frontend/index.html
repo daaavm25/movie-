@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie+ | Explora y guarda peliculas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+<a class="skip-link" href="#mainContent">Saltar al contenido principal</a>
+<div class="film-reel reel-one" aria-hidden="true"></div>
+<div class="film-reel reel-two" aria-hidden="true"></div>
+
+<header class="topbar">
+<div class="brand">
+<h1>Movie+</h1>
+<p>Descubre peliculas y construye tu coleccion.</p>
+</div>
+
+<div class="auth-panel">
+<span id="authText" class="auth-text">Sesion cerrada</span>
+<button
+id="loginBtn"
+class="lamp-btn lamp-off"
+type="button"
+aria-label="Abrir panel de sesion"
+aria-haspopup="dialog"
+title="Iniciar o registrarse"
+>
+💡
+</button>
+</div>
+</header>
+
+<nav class="main-nav" aria-label="Navegacion principal">
+<a class="nav-btn is-active" data-view="searchView" href="#searchView" aria-current="page">
+<span class="nav-btn__meta">Explorar</span>
+<span class="nav-btn__label">Buscar</span>
+</a>
+<a class="nav-btn" data-view="collectionView" href="#collectionView" aria-current="false">
+<span class="nav-btn__meta">Favoritos</span>
+<span class="nav-btn__label">Mi coleccion</span>
+</a>
+<a class="nav-btn" data-view="aboutView" href="#aboutView" aria-current="false">
+<span class="nav-btn__meta">Informacion</span>
+<span class="nav-btn__label">Acerca</span>
+</a>
+</nav>
+
+<aside class="floating-preferences" role="region" aria-label="Panel de accesibilidad y apariencia">
+<div class="floating-preferences__head">Preferencias</div>
+
+<button
+id="themeSwitchBtn"
+class="theme-switch"
+type="button"
+role="switch"
+aria-checked="false"
+aria-label="Cambiar entre modo claro y modo oscuro"
+>
+<span class="theme-switch__icon" aria-hidden="true">☀</span>
+<span class="theme-switch__track" aria-hidden="true">
+<span class="theme-switch__thumb"></span>
+</span>
+<span class="theme-switch__icon" aria-hidden="true">🌙</span>
+</button>
+<p id="themeSwitchLabel" class="preference-caption" aria-live="polite">Modo claro activo</p>
+
+<div class="preference-group" role="group" aria-label="Tamano de letra">
+<button id="fontDecreaseBtn" class="secondary-btn preference-btn" type="button" aria-label="Reducir tamano de letra">A-</button>
+<span id="fontScaleLabel" class="preference-scale" aria-live="polite">100%</span>
+<button id="fontIncreaseBtn" class="secondary-btn preference-btn" type="button" aria-label="Aumentar tamano de letra">A+</button>
+</div>
+
+<button id="colorblindModeBtn" class="secondary-btn preference-btn preference-btn-wide" type="button" aria-pressed="false">
+<span class="preference-icon" aria-hidden="true">👁</span>
+<span id="colorblindModeLabel">Vista daltonismo</span>
+</button>
+</aside>
+
+<main id="mainContent" class="content" tabindex="-1">
+<section id="searchView" class="view is-visible" aria-labelledby="searchTitle">
+<div class="section-head">
+<h2 id="searchTitle">Buscador de peliculas</h2>
+<p>Busca por nombre y haz clic en el poster para ver el detalle completo y guardarla en favoritos.</p>
+</div>
+
+<form id="searchForm" class="search-panel" novalidate>
+<label for="searchInput">Nombre de pelicula</label>
+<div class="search-controls">
+<input
+id="searchInput"
+type="search"
+name="searchInput"
+placeholder="Ejemplo: Batman"
+autocomplete="off"
+>
+<button id="searchBtn" type="submit">Buscar</button>
+</div>
+</form>
+
+<!-- Filter bar -->
+<div id="filterBar" class="filter-bar" role="group" aria-label="Filtros de busqueda">
+  <button class="filter-chip is-active" data-filter="populares" type="button">⭐ Populares</button>
+  <button class="filter-chip" data-filter="menos_populares" type="button">📉 Menos populares</button>
+  <button class="filter-chip" data-filter="genero_accion" type="button">💥 Accion</button>
+  <button class="filter-chip" data-filter="genero_fantasia" type="button">🧙 Fantasia</button>
+  <button class="filter-chip" data-filter="genero_terror" type="button">👻 Terror</button>
+  <button class="filter-chip" data-filter="genero_scifi" type="button">🚀 Ciencia Ficcion</button>
+  <button class="filter-chip" data-filter="genero_comedia" type="button">😂 Comedia</button>
+  <button class="filter-chip" data-filter="genero_drama" type="button">🎭 Drama</button>
+  <button class="filter-chip" data-filter="genero_animacion" type="button">🎨 Animacion</button>
+</div>
+
+<!-- Random carousel -->
+<section id="carouselSection" class="carousel-section" aria-labelledby="carouselTitle">
+  <div class="carousel-header">
+    <h3 id="carouselTitle" class="carousel-title">Peliculas del momento</h3>
+    <button id="carouselRefreshBtn" class="secondary-btn carousel-refresh-btn" type="button" aria-label="Mezclar peliculas aleatorias">🔀 Mezclar</button>
+  </div>
+  <div class="carousel-viewport" role="region" aria-label="Carrusel de peliculas" aria-live="polite">
+    <button class="carousel-arrow carousel-prev" id="carouselPrev" type="button" aria-label="Anterior">‹</button>
+    <div id="carouselTrack" class="carousel-track"></div>
+    <button class="carousel-arrow carousel-next" id="carouselNext" type="button" aria-label="Siguiente">›</button>
+  </div>
+</section>
+
+<div id="searchStatus" class="status" role="status" aria-live="polite"></div>
+<section id="resultados" class="cards" aria-live="polite" aria-busy="false" aria-label="Resultados de peliculas"></section>
+</section>
+
+<section id="collectionView" class="view" aria-labelledby="collectionTitle" hidden>
+<div class="section-head section-head-inline">
+<div>
+<h2 id="collectionTitle">Mi coleccion</h2>
+<p>Tus favoritos guardados, listos para eliminar cuando quieras.</p>
+</div>
+<button id="refreshCollectionBtn" class="secondary-btn" type="button">Actualizar</button>
+</div>
+
+<div id="collectionStatus" class="status" role="status" aria-live="polite"></div>
+<section id="coleccion" class="cards" aria-live="polite" aria-busy="false" aria-label="Peliculas en favoritos"></section>
+</section>
+
+<section id="aboutView" class="view" aria-labelledby="aboutTitle" hidden>
+<div class="section-head">
+<h2 id="aboutTitle">Que hace Movie+</h2>
+<p>Este apartado explica la funcionalidad de la plataforma y para quien puede ser util.</p>
+</div>
+
+<div class="about-grid">
+<article class="about-card">
+<h3>Funcionalidades principales</h3>
+<p>Movie+ permite buscar peliculas en tiempo real, revisar resultados en tarjetas claras y abrir cada poster para ver detalles ampliados.</p>
+<p>Tambien puedes guardar peliculas en tu coleccion personal y eliminarlas cuando ya no quieras mantenerlas en favoritos.</p>
+</article>
+
+<article class="about-card">
+<h3>Para que audiencia funciona</h3>
+<p>Esta pagina es util para estudiantes, fans del cine y usuarios casuales que quieren descubrir peliculas rapido sin navegar por plataformas complejas.</p>
+<p>Tambien funciona para personas que desean organizar recomendaciones o listas personales de peliculas para ver despues.</p>
+</article>
+
+<article class="about-card about-card-highlight">
+<h3>Como empezar</h3>
+<p>Usa el buscador para encontrar titulos por nombre y guarda tus favoritas en un solo lugar.</p>
+<button id="goSearchBtn" class="about-cta" type="button">Ir al buscador</button>
+</article>
+</div>
+</section>
+</main>
+
+<div id="toastRegion" class="toast-region" aria-live="assertive" aria-atomic="true"></div>
+
+<div id="movieModal" class="movie-modal" hidden>
+<div class="movie-modal__overlay" data-close-modal="true" aria-hidden="true"></div>
+<section
+id="movieModalContent"
+class="movie-modal__content"
+role="dialog"
+aria-modal="true"
+aria-labelledby="movieModalTitle"
+aria-describedby="movieModalMeta movieModalDescription movieModalProvidersStatus"
+tabindex="-1"
+>
+<button id="closeMovieModalBtn" class="movie-modal__close" type="button" aria-label="Cerrar ventana de pelicula">×</button>
+
+<figure class="movie-modal__media">
+<img id="movieModalImage" src="" alt="Poster ampliado de pelicula">
+</figure>
+
+<div class="movie-modal__info">
+<span id="movieModalTag" class="movie-modal__tag">Detalle</span>
+<h3 id="movieModalTitle">Titulo</h3>
+<p id="movieModalMeta" class="movie-modal__meta"></p>
+<p id="movieModalDescription" class="movie-modal__description"></p>
+
+<div class="movie-modal__actions">
+<button id="movieModalFavoriteBtn" class="save-btn movie-modal__favorite" type="button">Agregar a favoritos</button>
+</div>
+
+<section class="movie-modal__player" aria-labelledby="playerSectionTitle">
+<h4 id="playerSectionTitle">Ver pelicula</h4>
+<div id="moviePlayerLinks" class="movie-links-list" hidden></div>
+<div id="moviePlayerContainer" class="player-container" hidden>
+  <iframe
+    id="moviePlayerFrame"
+    class="player-iframe"
+    allowfullscreen
+    allow="autoplay; fullscreen"
+    title="Reproductor de pelicula"
+    src=""
+  ></iframe>
+</div>
+<p id="moviePlayerStatus" class="player-status">Reproduccion no disponible por el momento.</p>
+</section>
+
+<section class="movie-modal__providers" aria-labelledby="movieProvidersTitle">
+<h4 id="movieProvidersTitle">Donde verla</h4>
+<p id="movieModalProvidersStatus" class="movie-modal__providers-status" role="status" aria-live="polite">Consulta de plataformas pendiente.</p>
+<ul id="movieModalProvidersList" class="movie-modal__providers-list" aria-label="Plataformas disponibles"></ul>
+</section>
+</div>
+</section>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

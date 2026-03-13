@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie+ | Login Lamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="login.css">
+</head>
+<body data-on="0">
+<a class="back-link" href="index.html">Volver a Movie+</a>
+
+<main class="lamp-scene" aria-label="Escena de autenticacion lamp">
+  <div class="scene-glow" aria-hidden="true"></div>
+
+  <section class="lamp-block" aria-label="Lampara de acceso">
+    <div class="lamp-head"></div>
+    <button id="lampToggleBtn" class="lamp-cord" type="button" aria-label="Encender o apagar lampara">
+      <span class="lamp-cord__line"></span>
+      <span class="lamp-cord__knob"></span>
+    </button>
+    <div class="lamp-stem"></div>
+    <div class="lamp-base"></div>
+  </section>
+
+  <section id="authCard" class="auth-card" aria-labelledby="authTitle">
+    <h1 id="authTitle">Welcome</h1>
+    <p id="authHint" class="auth-hint">Enciende la lampara para mostrar el formulario.</p>
+    <p id="sessionLabel" class="session-label">Sesion cerrada</p>
+    <div id="authError" class="auth-error" hidden></div>
+
+    <div id="authSwitch" class="auth-switch" role="group" aria-label="Cambiar modo de autenticacion">
+      <span class="auth-switch__thumb" aria-hidden="true"></span>
+      <button id="switchLoginBtn" class="auth-switch__option is-active" type="button" data-tab="login" aria-pressed="true">Iniciar sesion</button>
+      <button id="switchRegisterBtn" class="auth-switch__option" type="button" data-tab="register" aria-pressed="false">Crear cuenta</button>
+    </div>
+
+    <form id="loginForm" class="auth-form" novalidate>
+      <label for="loginUsername">Usuario o email</label>
+      <input id="loginUsername" type="text" autocomplete="username" placeholder="your name" required>
+
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="******" required>
+
+      <button id="loginSubmitBtn" class="gold-btn" type="submit">Sign In</button>
+    </form>
+
+    <form id="registerForm" class="auth-form" hidden novalidate>
+      <label for="registerUsername">Usuario</label>
+      <input id="registerUsername" type="text" autocomplete="username" placeholder="your name" required minlength="3">
+
+      <label for="registerEmail">Email</label>
+      <input id="registerEmail" type="email" autocomplete="email" placeholder="mail@example.com" required>
+
+      <label for="registerPassword">Password</label>
+      <input id="registerPassword" type="password" autocomplete="new-password" placeholder="min 6 chars" required minlength="6">
+
+      <button id="registerSubmitBtn" class="gold-btn" type="submit">Create Account</button>
+    </form>
+
+    <div id="loggedPanel" class="logged-panel" hidden>
+      <p id="loggedText">Sesion activa.</p>
+      <div class="logged-actions">
+        <button id="logoutBtn" class="outline-btn" type="button">Cerrar sesion</button>
+        <a class="gold-btn return-btn" href="index.html">Ir a Movie+</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="login.js"></script>
+</body>
+</html>
