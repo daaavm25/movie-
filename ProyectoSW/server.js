@@ -178,66 +178,6 @@ async function getTmdbProviders(movieId, countryCode) {
     };
 }
 
-async function getTmdbMovieDetails(movieId) {
-    const response = await axios.get(`${TMDB_BASE_URL}/movie/${movieId}`, {
-        params: {
-            api_key: TMDB_API_KEY,
-            language: 'es-MX'
-        }
-    });
-
-    return response.data || {};
-}
-
-async function searchLegalTorrentsByTmdb(movieId) {
-    const details = await getTmdbMovieDetails(movieId);
-    const title = String(details?.title || '').trim();
-    const releaseDate = String(details?.release_date || '').trim();
-    const year = /^\d{4}/.test(releaseDate) ? releaseDate.slice(0, 4) : '';
-
-    if (!title) {
-        return {
-            title: '',
-            year,
-            results: []
-        };
-    }
-
-    const searchTerms = year ? `title:(\"${title}\") AND year:(${year})` : `title:(\"${title}\")`;
-    const query = `mediatype:(movies) AND ${searchTerms}`;
-
-    const response = await axios.get('https://archive.org/advancedsearch.php', {
-        params: {
-            q: query,
-            fl: ['identifier', 'title', 'year', 'mediatype'],
-            rows: 8,
-            page: 1,
-            output: 'json'
-        }
-    });
-
-    const docs = Array.isArray(response.data?.response?.docs) ? response.data.response.docs : [];
-
-    const results = docs
-        .filter((doc) => doc && doc.identifier)
-        .map((doc) => {
-            const identifier = String(doc.identifier);
-            return {
-                id: identifier,
-                title: String(doc.title || identifier),
-                year: String(doc.year || ''),
-                torrentUrl: `https://archive.org/download/${identifier}/${identifier}_archive.torrent`,
-                detailsUrl: `https://archive.org/details/${identifier}`
-            };
-        });
-
-    return {
-        title,
-        year,
-        results
-    };
-}
-
 app.get('/peliculas', async (req, res) => {
     try {
         const query = String(req.query.query || '').trim();
@@ -329,32 +269,6 @@ app.get('/peliculas/:id/proveedores', async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             error: 'Error al consultar proveedores de streaming',
-            details: error.message
-        });
-    }
-});
-
-app.get('/peliculas/:id/torrents-legales', async (req, res) => {
-    try {
-        const movieId = Number(req.params.id);
-
-        if (!Number.isInteger(movieId) || movieId <= 0) {
-            return res.status(400).json({ error: 'Debes enviar un id de pelicula valido.' });
-        }
-
-        const payload = await searchLegalTorrentsByTmdb(movieId);
-
-        return res.json({
-            movieId,
-            movieTitle: payload.title,
-            movieYear: payload.year,
-            total: payload.results.length,
-            results: payload.results,
-            source: 'Internet Archive'
-        });
-    } catch (error) {
-        return res.status(500).json({
-            error: 'Error al buscar torrents legales',
             details: error.message
         });
     }
@@ -628,44 +542,6 @@ app.post('/torrents/iniciar', async (req, res) => {
         );
 
         return res.status(201).json(result);
-    } catch (error) {
-        return res.status(400).json({ error: error.message });
-    }
-});
-
-app.post('/torrents/auto/tmdb/:id', async (req, res) => {
-    try {
-        const user = await getSessionUser(req);
-        if (!user) return res.status(401).json({ error: 'No autenticado.' });
-
-        const movieId = Number(req.params.id);
-        if (!Number.isInteger(movieId) || movieId <= 0) {
-            return res.status(400).json({ error: 'Debes enviar un id de pelicula valido.' });
-        }
-
-        const searchPayload = await searchLegalTorrentsByTmdb(movieId);
-        const firstMatch = searchPayload.results[0];
-
-        if (!firstMatch) {
-            return res.status(404).json({
-                error: 'No se encontraron torrents legales para esta pelicula.'
-            });
-        }
-
-        const result = await torrentService.startDownload(
-            user.id,
-            firstMatch.torrentUrl,
-            searchPayload.title || firstMatch.title,
-            `Fuente legal: ${firstMatch.detailsUrl}`
-        );
-
-        return res.status(201).json({
-            ...result,
-            movieId,
-            auto: true,
-            source: 'Internet Archive',
-            match: firstMatch
-        });
     } catch (error) {
         return res.status(400).json({ error: error.message });
     }
