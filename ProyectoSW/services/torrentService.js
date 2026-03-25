@@ -51,9 +51,12 @@ class TorrentService {
         
         return new Promise((resolve, reject) => {
             try {
-                // Validar que el enlace magnético sea válido
-                if (!magnetLink.startsWith('magnet:')) {
-                    return reject(new Error('Enlace magnético inválido'));
+                const source = String(magnetLink || '').trim();
+                const isMagnet = source.startsWith('magnet:?');
+                const isTorrentUrl = /^https?:\/\/.+\.torrent(\?.*)?$/i.test(source);
+
+                if (!isMagnet && !isTorrentUrl) {
+                    return reject(new Error('Fuente de torrent invalida (usa magnet o URL .torrent)'));
                 }
 
                 // Crear registro en la BD
@@ -71,7 +74,7 @@ class TorrentService {
                     fs.mkdirSync(downloadPath, { recursive: true });
 
                     // Iniciar descarga del torrent
-                    this.client.add(magnetLink, { path: downloadPath }, async (torrent) => {
+                    this.client.add(source, { path: downloadPath }, async (torrent) => {
                         // Guardar referencia del torrent
                         this.torrents.set(torrentId, torrent);
 
