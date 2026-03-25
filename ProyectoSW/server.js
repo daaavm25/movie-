@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = 8000;
@@ -9,10 +11,17 @@ const sequelize = require('./config/database');
 const Watchlist = require('./models/Watchlist');
 const User = require('./models/User');
 const Session = require('./models/Session');
+const TorrentDownload = require('./models/TorrentDownload');
+const TorrentService = require('./services/torrentService');
+
+// Instanciar servicio de torrents
+const torrentService = new TorrentService();
 
 // Model associations
 User.hasMany(Session, { foreignKey: 'user_id' });
 Session.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(TorrentDownload, { foreignKey: 'user_id' });
+TorrentDownload.belongsTo(User, { foreignKey: 'user_id' });
 
 // ---------- Auth helpers ----------
 function generateToken() {
@@ -169,6 +178,66 @@ async function getTmdbProviders(movieId, countryCode) {
     };
 }
 
+async function getTmdbMovieDetails(movieId) {
+    const response = await axios.get(`${TMDB_BASE_URL}/movie/${movieId}`, {
+        params: {
+            api_key: TMDB_API_KEY,
+            language: 'es-MX'
+        }
+    });
+
+    return response.data || {};
+}
+
+async function searchLegalTorrentsByTmdb(movieId) {
+    const details = await getTmdbMovieDetails(movieId);
+    const title = String(details?.title || '').trim();
+    const releaseDate = String(details?.release_date || '').trim();
+    const year = /^\d{4}/.test(releaseDate) ? releaseDate.slice(0, 4) : '';
+
+    if (!title) {
+        return {
+            title: '',
+            year,
+            results: []
+        };
+    }
+
+    const searchTerms = year ? `title:(\"${title}\") AND year:(${year})` : `title:(\"${title}\")`;
+    const query = `mediatype:(movies) AND ${searchTerms}`;
+
+    const response = await axios.get('https://archive.org/advancedsearch.php', {
+        params: {
+            q: query,
+            fl: ['identifier', 'title', 'year', 'mediatype'],
+            rows: 8,
+            page: 1,
+            output: 'json'
+        }
+    });
+
+    const docs = Array.isArray(response.data?.response?.docs) ? response.data.response.docs : [];
+
+    const results = docs
+        .filter((doc) => doc && doc.identifier)
+        .map((doc) => {
+            const identifier = String(doc.identifier);
+            return {
+                id: identifier,
+                title: String(doc.title || identifier),
+                year: String(doc.year || ''),
+                torrentUrl: `https://archive.org/download/${identifier}/${identifier}_archive.torrent`,
+                detailsUrl: `https://archive.org/details/${identifier}`
+            };
+        });
+
+    return {
+        title,
+        year,
+        results
+    };
+}
+
 app.get('/peliculas', async (req, res) => {
     try {
         const query = String(req.query.query || '').trim();
@@ -260,6 +329,32 @@ app.get('/peliculas/:id/proveedores', async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             error: 'Error al consultar proveedores de streaming',
+            details: error.message
+        });
+    }
+});
+
+app.get('/peliculas/:id/torrents-legales', async (req, res) => {
+    try {
+        const movieId = Number(req.params.id);
+
+        if (!Number.isInteger(movieId) || movieId <= 0) {
+            return res.status(400).json({ error: 'Debes enviar un id de pelicula valido.' });
+        }
+
+        const payload = await searchLegalTorrentsByTmdb(movieId);
+
+        return res.json({
+            movieId,
+            movieTitle: payload.title,
+            movieYear: payload.year,
+            total: payload.results.length,
+            results: payload.results,
+            source: 'Internet Archive'
+        });
+    } catch (error) {
+        return res.status(500).json({
+            error: 'Error al buscar torrents legales',
             details: error.message
         });
     }
@@ -495,3 +590,292 @@ app.delete('/watchlist/:id', async (req, res) => {
         return res.status(500).json({ error: error.message });
     }
 });
+
+// =====================================================
+// ============ ENDPOINTS DE TORRENTS ================
+// =====================================================
+
+/**
+ * POST /torrents/iniciar
+ * Inicia una descarga de torrent
+ */
+app.post('/torrents/iniciar', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const magnetLink = String(req.body.magnet_link || req.body.magnetLink || '').trim();
+        const title = String(req.body.title || '').trim();
+        const description = String(req.body.description || '').trim();
+
+        if (!magnetLink || !title) {
+            return res.status(400).json({
+                error: 'Faltan campos obligatorios: magnet_link y title'
+            });
+        }
+
+        if (!magnetLink.startsWith('magnet:?')) {
+            return res.status(400).json({
+                error: 'magnet_link invalido'
+            });
+        }
+
+        const result = await torrentService.startDownload(
+            user.id,
+            magnetLink,
+            title,
+            description
+        );
+
+        return res.status(201).json(result);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+app.post('/torrents/auto/tmdb/:id', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const movieId = Number(req.params.id);
+        if (!Number.isInteger(movieId) || movieId <= 0) {
+            return res.status(400).json({ error: 'Debes enviar un id de pelicula valido.' });
+        }
+
+        const searchPayload = await searchLegalTorrentsByTmdb(movieId);
+        const firstMatch = searchPayload.results[0];
+
+        if (!firstMatch) {
+            return res.status(404).json({
+                error: 'No se encontraron torrents legales para esta pelicula.'
+            });
+        }
+
+        const result = await torrentService.startDownload(
+            user.id,
+            firstMatch.torrentUrl,
+            searchPayload.title || firstMatch.title,
+            `Fuente legal: ${firstMatch.detailsUrl}`
+        );
+
+        return res.status(201).json({
+            ...result,
+            movieId,
+            auto: true,
+            source: 'Internet Archive',
+            match: firstMatch
+        });
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /torrents/descargas
+ * Obtiene todas las descargas del usuario autenticado
+ */
+app.get('/torrents/descargas', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const downloads = await torrentService.getUserDownloads(user.id);
+        return res.json({
+            total: downloads.length,
+            descargas: downloads
+        });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /torrents/:id
+ * Obtiene el estado de una descarga específica
+ */
+app.get('/torrents/:id', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const download = await torrentService.getDownloadStatus(id);
+
+        // Verificar que el usuario sea propietario de la descarga
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para acceder a esta descarga.' });
+        }
+
+        return res.json(download);
+    } catch (error) {
+        return res.status(404).json({ error: error.message });
+    }
+});
+
+/**
+ * PUT /torrents/:id/pausar
+ * Pausa una descarga
+ */
+app.put('/torrents/:id/pausar', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const download = await TorrentDownload.findByPk(id);
+
+        if (!download) {
+            return res.status(404).json({ error: 'Descarga no encontrada.' });
+        }
+
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para pausar esta descarga.' });
+        }
+
+        const result = await torrentService.pauseDownload(id);
+        return res.json(result);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * PUT /torrents/:id/reanudar
+ * Reanuda una descarga pausada
+ */
+app.put('/torrents/:id/reanudar', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const download = await TorrentDownload.findByPk(id);
+
+        if (!download) {
+            return res.status(404).json({ error: 'Descarga no encontrada.' });
+        }
+
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para reanudar esta descarga.' });
+        }
+
+        const result = await torrentService.resumeDownload(id);
+        return res.json(result);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * DELETE /torrents/:id
+ * Cancela y elimina una descarga
+ */
+app.delete('/torrents/:id', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const download = await TorrentDownload.findByPk(id);
+
+        if (!download) {
+            return res.status(404).json({ error: 'Descarga no encontrada.' });
+        }
+
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar esta descarga.' });
+        }
+
+        const result = await torrentService.cancelDownload(id);
+        return res.json(result);
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /torrents/:id/archivos
+ * Obtiene los archivos de una descarga completada
+ */
+app.get('/torrents/:id/archivos', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const download = await TorrentDownload.findByPk(id);
+
+        if (!download) {
+            return res.status(404).json({ error: 'Descarga no encontrada.' });
+        }
+
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para acceder a estos archivos.' });
+        }
+
+        const files = await torrentService.getDownloadFiles(id);
+        return res.json({
+            torrent_id: id,
+            title: download.title,
+            archivos: files
+        });
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /torrents/:id/stream?file=<nombre>
+ * Reproduce un archivo de video descargado
+ */
+app.get('/torrents/:id/stream', async (req, res) => {
+    try {
+        const user = await getSessionUser(req);
+        if (!user) return res.status(401).json({ error: 'No autenticado.' });
+
+        const { id } = req.params;
+        const requestedFile = String(req.query.file || '').trim();
+        const download = await TorrentDownload.findByPk(id);
+
+        if (!download) {
+            return res.status(404).json({ error: 'Descarga no encontrada.' });
+        }
+
+        if (download.user_id !== user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para reproducir esta descarga.' });
+        }
+
+        const files = await torrentService.getDownloadFiles(id);
+        if (!files.length) {
+            return res.status(404).json({ error: 'No se encontraron archivos de video.' });
+        }
+
+        const selected = requestedFile
+            ? files.find((file) => file.name === requestedFile)
+            : files.reduce((largest, file) => (file.size > largest.size ? file : largest), files[0]);
+
+        if (!selected) {
+            return res.status(404).json({ error: 'Archivo solicitado no encontrado.' });
+        }
+
+        const safeBase = path.resolve(path.join(__dirname, 'descargas', `torrent_${id}`));
+        const safeFilePath = path.resolve(selected.path);
+
+        if (!safeFilePath.startsWith(safeBase + path.sep)) {
+            return res.status(400).json({ error: 'Ruta de archivo invalida.' });
+        }
+
+        if (!fs.existsSync(safeFilePath)) {
+            return res.status(404).json({ error: 'Archivo no existe en disco.' });
+        }
+
+        return res.sendFile(safeFilePath);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+// =====================================================
+// ==================== FIN TORRENTS =================
+// =====================================================

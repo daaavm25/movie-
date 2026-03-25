@@ -509,10 +509,12 @@ function renderMoviePlayerLinks(movie, preferredUrl = "") {
 	elements.moviePlayerLinks.innerHTML = "";
 
 	if (!links.length) {
-		elements.moviePlayerLinks.hidden = true;
-		elements.moviePlayerStatus.textContent = "Reproduccion no disponible por el momento.";
+		elements.moviePlayerLinks.hidden = false;
+		renderLegalTorrentActions(movie);
+		elements.moviePlayerStatus.textContent = "Buscando fuentes legales de torrent por TMDB...";
 		elements.moviePlayerContainer.hidden = true;
 		elements.moviePlayerFrame.src = "";
+		void updateLegalTorrentStatus(movie);
 		return;
 	}
 
@@ -530,6 +532,88 @@ function renderMoviePlayerLinks(movie, preferredUrl = "") {
 	});
 
 	loadPlayerUrl(preferredUrl || links[0]);
+}
+
+async function updateLegalTorrentStatus(movie) {
+	const movieId = Number(movie?.id || 0);
+	if (!Number.isInteger(movieId) || movieId <= 0) {
+		elements.moviePlayerStatus.textContent = "No hay id valido para buscar torrent legal.";
+		return;
+	}
+
+	try {
+		const response = await fetch(`${API}/peliculas/${movieId}/torrents-legales`);
+		const payload = await safeJson(response);
+
+		if (!response.ok) {
+			throw new Error(payload?.error || "No se pudo consultar catalogo legal de torrents.");
+		}
+
+		const total = Number(payload?.total || 0);
+		if (total > 0) {
+			elements.moviePlayerStatus.textContent = `${total} opciones legales encontradas. Puedes auto-descargar la primera.`;
+			return;
+		}
+
+		elements.moviePlayerStatus.textContent = "No hay torrents legales disponibles para este titulo en este momento.";
+	} catch (error) {
+		elements.moviePlayerStatus.textContent = error.message || "Error al consultar torrents legales.";
+	}
+}
+
+function renderLegalTorrentActions(movie) {
+	const movieId = Number(movie?.id || 0);
+
+	const autoBtn = document.createElement("button");
+	autoBtn.type = "button";
+	autoBtn.className = "movie-link-pill";
+	autoBtn.innerHTML = '<span aria-hidden="true">⬇</span> Auto-descargar torrent legal';
+	autoBtn.disabled = !state.logged || !Number.isInteger(movieId) || movieId <= 0;
+	autoBtn.addEventListener("click", () => startAutoLegalTorrent(movieId, autoBtn));
+
+	const manageBtn = document.createElement("button");
+	manageBtn.type = "button";
+	manageBtn.className = "movie-link-pill";
+	manageBtn.innerHTML = '<span aria-hidden="true">📥</span> Abrir gestor de descargas';
+	manageBtn.addEventListener("click", () => {
+		window.location.href = "torrents.html";
+	});
+
+	elements.moviePlayerLinks.append(autoBtn, manageBtn);
+}
+
+async function startAutoLegalTorrent(movieId, buttonElement) {
+	if (!state.logged || !state.authToken) {
+		showToast("Inicia sesion para auto-descargar torrents legales.", "info");
+		return;
+	}
+
+	const originalText = buttonElement.textContent;
+	buttonElement.disabled = true;
+	buttonElement.textContent = "Iniciando descarga...";
+
+	try {
+		const response = await fetch(`${API}/torrents/auto/tmdb/${movieId}`, {
+			method: "POST",
+			headers: {
+				"x-auth-token": state.authToken || ""
+			}
+		});
+
+		const payload = await safeJson(response);
+		if (!response.ok) {
+			throw new Error(payload?.error || "No se pudo iniciar la auto-descarga.");
+		}
+
+		showToast(`Descarga iniciada: ${payload?.message || "torrent legal"}`, "success");
+		elements.moviePlayerStatus.textContent = "Descarga legal iniciada. Abre el gestor para ver progreso y reproducir.";
+	} catch (error) {
+		showToast(error.message || "Error al iniciar auto-descarga.", "error");
+		elements.moviePlayerStatus.textContent = error.message || "Error al iniciar auto-descarga.";
+	} finally {
+		buttonElement.disabled = false;
+		buttonElement.textContent = originalText || "Auto-descargar torrent legal";
+	}
 }
 
 function setActiveView(viewId, persist = true) {
