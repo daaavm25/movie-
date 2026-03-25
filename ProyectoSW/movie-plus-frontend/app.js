@@ -534,6 +534,34 @@ function renderMoviePlayerLinks(movie, preferredUrl = "") {
 	loadPlayerUrl(preferredUrl || links[0]);
 }
 
+function renderLegalTorrentActions(movie) {
+	const movieId = Number(movie?.id || 0);
+
+	const autoBtn = document.createElement("button");
+	autoBtn.type = "button";
+	autoBtn.className = "movie-link-pill";
+	autoBtn.innerHTML = '<span aria-hidden="true">⬇</span> Auto-descargar torrent legal';
+	autoBtn.disabled = !state.logged || !Number.isInteger(movieId) || movieId <= 0;
+	autoBtn.addEventListener("click", () => startAutoLegalTorrent(movieId, autoBtn));
+
+	const playLocalBtn = document.createElement("button");
+	playLocalBtn.type = "button";
+	playLocalBtn.className = "movie-link-pill";
+	playLocalBtn.innerHTML = '<span aria-hidden="true">▶</span> Reproducir descarga local';
+	playLocalBtn.disabled = !state.logged;
+	playLocalBtn.addEventListener("click", () => playDownloadedTorrentForMovie(movie, playLocalBtn));
+
+	const manageBtn = document.createElement("button");
+	manageBtn.type = "button";
+	manageBtn.className = "movie-link-pill";
+	manageBtn.innerHTML = '<span aria-hidden="true">📥</span> Abrir gestor de descargas';
+	manageBtn.addEventListener("click", () => {
+		window.location.href = "torrents.html";
+	});
+
+	elements.moviePlayerLinks.append(autoBtn, playLocalBtn, manageBtn);
+}
+
 async function updateLegalTorrentStatus(movie) {
 	const movieId = Number(movie?.id || 0);
 	if (!Number.isInteger(movieId) || movieId <= 0) {
@@ -561,27 +589,6 @@ async function updateLegalTorrentStatus(movie) {
 	}
 }
 
-function renderLegalTorrentActions(movie) {
-	const movieId = Number(movie?.id || 0);
-
-	const autoBtn = document.createElement("button");
-	autoBtn.type = "button";
-	autoBtn.className = "movie-link-pill";
-	autoBtn.innerHTML = '<span aria-hidden="true">⬇</span> Auto-descargar torrent legal';
-	autoBtn.disabled = !state.logged || !Number.isInteger(movieId) || movieId <= 0;
-	autoBtn.addEventListener("click", () => startAutoLegalTorrent(movieId, autoBtn));
-
-	const manageBtn = document.createElement("button");
-	manageBtn.type = "button";
-	manageBtn.className = "movie-link-pill";
-	manageBtn.innerHTML = '<span aria-hidden="true">📥</span> Abrir gestor de descargas';
-	manageBtn.addEventListener("click", () => {
-		window.location.href = "torrents.html";
-	});
-
-	elements.moviePlayerLinks.append(autoBtn, manageBtn);
-}
-
 async function startAutoLegalTorrent(movieId, buttonElement) {
 	if (!state.logged || !state.authToken) {
 		showToast("Inicia sesion para auto-descargar torrents legales.", "info");
@@ -606,13 +613,126 @@ async function startAutoLegalTorrent(movieId, buttonElement) {
 		}
 
 		showToast(`Descarga iniciada: ${payload?.message || "torrent legal"}`, "success");
-		elements.moviePlayerStatus.textContent = "Descarga legal iniciada. Abre el gestor para ver progreso y reproducir.";
+		elements.moviePlayerStatus.textContent = "Descarga legal iniciada. Puedes reproducirla cuando termine.";
 	} catch (error) {
 		showToast(error.message || "Error al iniciar auto-descarga.", "error");
 		elements.moviePlayerStatus.textContent = error.message || "Error al iniciar auto-descarga.";
 	} finally {
 		buttonElement.disabled = false;
 		buttonElement.textContent = originalText || "Auto-descargar torrent legal";
+	}
+}
+
+function normalizeMatchText(text) {
+	return String(text || "")
+		.toLowerCase()
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/[^a-z0-9\s]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function findBestDownloadByMovieTitle(downloads, movieTitle) {
+	const target = normalizeMatchText(movieTitle);
+	if (!target) {
+		return null;
+	}
+
+	const completed = downloads.filter((item) => String(item?.status || "") === "completado");
+	if (!completed.length) {
+		return null;
+	}
+
+	const exact = completed.find((item) => normalizeMatchText(item?.title) === target);
+	if (exact) {
+		return exact;
+	}
+
+	const inclusive = completed.find((item) => {
+		const source = normalizeMatchText(item?.title);
+		return source.includes(target) || target.includes(source);
+	});
+
+	if (inclusive) {
+		return inclusive;
+	}
+
+	return completed[0] || null;
+}
+
+async function playDownloadedTorrentForMovie(movie, buttonElement) {
+	if (!state.logged || !state.authToken) {
+		showToast("Inicia sesion para reproducir descargas locales.", "info");
+		return;
+	}
+
+	const originalText = buttonElement.textContent;
+	buttonElement.disabled = true;
+	buttonElement.textContent = "Buscando descarga...";
+
+	try {
+		const downloadsResponse = await fetch(`${API}/torrents/descargas`, {
+			headers: { "x-auth-token": state.authToken || "" }
+		});
+
+		const downloadsPayload = await safeJson(downloadsResponse);
+		if (!downloadsResponse.ok) {
+			throw new Error(downloadsPayload?.error || "No se pudo consultar tus descargas.");
+		}
+
+		const downloads = Array.isArray(downloadsPayload?.descargas) ? downloadsPayload.descargas : [];
+		const selectedDownload = findBestDownloadByMovieTitle(downloads, movie?.titulo || movie?.title || "");
+
+		if (!selectedDownload) {
+			throw new Error("No encontré una descarga completada para esta pelicula.");
+		}
+
+		buttonElement.textContent = "Preparando archivo...";
+
+		const filesResponse = await fetch(`${API}/torrents/${selectedDownload.id}/archivos`, {
+			headers: { "x-auth-token": state.authToken || "" }
+		});
+
+		const filesPayload = await safeJson(filesResponse);
+		if (!filesResponse.ok) {
+			throw new Error(filesPayload?.error || "No se pudieron obtener los archivos descargados.");
+		}
+
+		const files = Array.isArray(filesPayload?.archivos) ? filesPayload.archivos : [];
+		if (!files.length) {
+			throw new Error("La descarga no tiene archivos de video disponibles.");
+		}
+
+		const selectedFile = files.reduce((largest, file) => (
+			Number(file.size || 0) > Number(largest.size || 0) ? file : largest
+		), files[0]);
+
+		buttonElement.textContent = "Cargando reproductor...";
+
+		const streamUrl = `${API}/torrents/${selectedDownload.id}/stream?file=${encodeURIComponent(selectedFile.name)}`;
+		const streamResponse = await fetch(streamUrl, {
+			headers: { "x-auth-token": state.authToken || "" }
+		});
+
+		if (!streamResponse.ok) {
+			const streamError = await safeJson(streamResponse);
+			throw new Error(streamError?.error || "No se pudo abrir el stream del archivo.");
+		}
+
+		const mediaBlob = await streamResponse.blob();
+		const mediaUrl = URL.createObjectURL(mediaBlob);
+
+		elements.moviePlayerFrame.src = mediaUrl;
+		elements.moviePlayerContainer.hidden = false;
+		elements.moviePlayerStatus.textContent = `Reproduciendo descarga local: ${selectedFile.name}`;
+		showToast("Reproduccion local iniciada.", "success");
+	} catch (error) {
+		showToast(error.message || "No se pudo reproducir descarga local.", "error");
+		elements.moviePlayerStatus.textContent = error.message || "No se pudo reproducir descarga local.";
+	} finally {
+		buttonElement.disabled = false;
+		buttonElement.textContent = originalText || "Reproducir descarga local";
 	}
 }
 
