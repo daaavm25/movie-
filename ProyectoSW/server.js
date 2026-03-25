@@ -238,6 +238,30 @@ async function searchLegalTorrentsByTmdb(movieId) {
     };
 }
 
+async function findFirstReachableTorrent(results) {
+    const candidates = Array.isArray(results) ? results : [];
+
+    for (const item of candidates) {
+        const torrentUrl = String(item?.torrentUrl || '').trim();
+        if (!torrentUrl) continue;
+
+        try {
+            const response = await axios.head(torrentUrl, {
+                timeout: 5000,
+                validateStatus: () => true
+            });
+
+            if (response.status >= 200 && response.status < 400) {
+                return item;
+            }
+        } catch (_) {
+            // Probar siguiente candidato
+        }
+    }
+
+    return null;
+}
+
 app.get('/peliculas', async (req, res) => {
     try {
         const query = String(req.query.query || '').trim();
@@ -647,11 +671,11 @@ app.post('/torrents/auto/tmdb/:id', async (req, res) => {
         }
 
         const searchPayload = await searchLegalTorrentsByTmdb(movieId);
-        const firstMatch = searchPayload.results[0];
+        const firstMatch = await findFirstReachableTorrent(searchPayload.results);
 
         if (!firstMatch) {
             return res.status(404).json({
-                error: 'No se encontraron torrents legales para esta pelicula.'
+                error: 'No se encontraron torrents legales disponibles para descarga en este momento.'
             });
         }
 

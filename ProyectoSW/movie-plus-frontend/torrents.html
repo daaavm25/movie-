@@ -322,7 +322,29 @@
 
     <script>
         const API_BASE = 'http://localhost:8000';
-        let authToken = localStorage.getItem('auth_token');
+        const AUTH_KEYS = {
+            token: 'movieplus:token',
+            userId: 'movieplus:userId',
+            username: 'movieplus:username',
+            legacyToken: 'auth_token'
+        };
+
+        function getAuthToken() {
+            const primary = localStorage.getItem(AUTH_KEYS.token);
+            if (primary) return primary;
+
+            // Fallback para instalaciones anteriores.
+            return localStorage.getItem(AUTH_KEYS.legacyToken);
+        }
+
+        function clearAuthSession() {
+            localStorage.removeItem(AUTH_KEYS.token);
+            localStorage.removeItem(AUTH_KEYS.userId);
+            localStorage.removeItem(AUTH_KEYS.username);
+            localStorage.removeItem(AUTH_KEYS.legacyToken);
+        }
+
+        let authToken = getAuthToken();
 
         // Si no hay token, redirigir a login
         if (!authToken) {
@@ -385,6 +407,15 @@
                 });
 
                 const data = await response.json();
+
+                if (response.status === 401) {
+                    clearAuthSession();
+                    showError('Tu sesión expiró. Inicia sesión nuevamente.');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 1200);
+                    return;
+                }
 
                 if (!response.ok) {
                     showError(data.error || 'Error al cargar descargas');
